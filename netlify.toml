@@ -3,6 +3,11 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  # Firebase web config values (project ID, app ID) are public identifiers that
+  # ship in the client bundle by design, so they are excluded from secrets scanning.
+  SECRETS_SCAN_OMIT_KEYS = "Project_ID,APP_ID"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
