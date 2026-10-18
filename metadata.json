@@ -1,0 +1,6 @@
+{
+  "name": "360 ScamShield AI",
+  "description": "Pakistan's intelligent scam detection, threat analysis, and community fraud prevention shield powered by Gemini AI and local threat rules.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,206 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global helper primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'naixhimdadali@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Admin collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // User Profiles
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      
+      function isValidUserProfile(data) {
+        return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'role']) &&
+               data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt', 'role']) &&
+               data.uid == request.auth.uid &&
+               data.uid is string && data.uid.size() <= 128 &&
+               data.displayName is string && data.displayName.size() <= 100 &&
+               (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
+               (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+               data.createdAt is string && data.createdAt.size() <= 50 &&
+               (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+               (data.role == 'user' || (data.role == 'admin' && request.auth.token.email == 'naixhimdadali@gmail.com'));
+      }
+
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(request.resource.data) &&
+                       request.resource.data.uid == resource.data.uid &&
+                       request.resource.data.createdAt == resource.data.createdAt &&
+                       (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin() || isOwner(userId);
+
+      // Private User Checks History
+      match /checks/{checkId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Community Posts
+    match /community_posts/{postId} {
+      allow read: if resource.data.isHidden != true || isAdmin() || (isSignedIn() && resource.data.authorId == request.auth.uid);
+
+      function isValidPost(data) {
+        return data.keys().hasAll(['title', 'category', 'story', 'authorId', 'createdAt']) &&
+               data.keys().hasOnly(['title', 'category', 'story', 'avoidedOrLost', 'isAnonymous', 
+                                   'authorId', 'authorName', 'authorPhoto', 
+                                   'ratingCount', 'ratingSum', 'commentCount', 'reportCount', 
+                                   'isHidden', 'createdAt', 'updatedAt', 'isSample']) &&
+               data.title is string && data.title.size() >= 5 && data.title.size() <= 150 &&
+               data.category is string && data.category.size() <= 50 &&
+               data.story is string && data.story.size() >= 20 && data.story.size() <= 2500 &&
+               (!('avoidedOrLost' in data) || (data.avoidedOrLost is string && data.avoidedOrLost.size() <= 500)) &&
+               (!('isAnonymous' in data) || data.isAnonymous is bool) &&
+               data.authorId == request.auth.uid &&
+               data.authorId is string && data.authorId.size() <= 128 &&
+               (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 100)) &&
+               (!('authorPhoto' in data) || (data.authorPhoto is string && data.authorPhoto.size() <= 500)) &&
+               (!('ratingCount' in data) || data.ratingCount is number) &&
+               (!('ratingSum' in data) || data.ratingSum is number) &&
+               (!('commentCount' in data) || data.commentCount is number) &&
+               (!('reportCount' in data) || data.reportCount is number) &&
+               (!('isHidden' in data) || data.isHidden is bool) &&
+               (!('isSample' in data) || data.isSample is bool) &&
+               data.createdAt is string && data.createdAt.size() <= 50;
+      }
+
+      allow create: if isSignedIn() && isValidId(postId) && (isValidPost(request.resource.data) || isAdmin());
+      
+      allow update: if isSignedIn() && isValidId(postId) && (
+        isAdmin() ||
+        (
+          resource.data.authorId == request.auth.uid &&
+          isValidPost(request.resource.data) &&
+          request.resource.data.authorId == resource.data.authorId &&
+          request.resource.data.createdAt == resource.data.createdAt
+        ) ||
+        // Counter update branch for ratings/comments/reports
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ratingCount', 'ratingSum', 'commentCount', 'reportCount', 'isHidden']) &&
+          request.resource.data.authorId == resource.data.authorId &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.title == resource.data.title &&
+          request.resource.data.story == resource.data.story
+        )
+      );
+
+      allow delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+
+      // Subcollection: Ratings (Document ID MUST be userId)
+      match /ratings/{userId} {
+        allow read: if true;
+        allow create, update: if isOwner(userId) && isValidId(userId) &&
+                                 request.resource.data.rating is number &&
+                                 request.resource.data.rating >= 1 &&
+                                 request.resource.data.rating <= 5 &&
+                                 request.resource.data.userId == request.auth.uid;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      // Subcollection: Comments
+      match /comments/{commentId} {
+        allow read: if true;
+        
+        function isValidComment(data) {
+          return data.keys().hasAll(['postId', 'authorId', 'authorName', 'comment', 'createdAt']) &&
+                 data.keys().hasOnly(['postId', 'authorId', 'authorName', 'authorPhoto', 'comment', 'createdAt']) &&
+                 data.postId == postId &&
+                 data.authorId == request.auth.uid &&
+                 data.authorName is string && data.authorName.size() <= 100 &&
+                 (!('authorPhoto' in data) || (data.authorPhoto is string && data.authorPhoto.size() <= 500)) &&
+                 data.comment is string && data.comment.size() >= 2 && data.comment.size() <= 600 &&
+                 data.createdAt is string && data.createdAt.size() <= 50;
+        }
+
+        allow create: if isSignedIn() && isValidId(commentId) && isValidComment(request.resource.data);
+        allow update: if isSignedIn() && resource.data.authorId == request.auth.uid && isValidComment(request.resource.data);
+        allow delete: if isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin());
+      }
+
+      // Subcollection: Reports
+      match /reports/{userId} {
+        allow read: if isAdmin();
+        allow create: if isOwner(userId) && isValidId(userId) &&
+                         request.resource.data.userId == request.auth.uid &&
+                         request.resource.data.reason is string &&
+                         request.resource.data.reason.size() <= 200;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Feedback on scan results (verdict verification)
+    match /feedback/{feedbackId} {
+      allow read: if isAdmin();
+      allow create: if isValidId(feedbackId) &&
+                       request.resource.data.keys().hasAll(['verdict', 'category', 'isCorrect', 'createdAt']) &&
+                       request.resource.data.keys().hasOnly(['verdict', 'category', 'isCorrect', 'createdAt']) &&
+                       request.resource.data.verdict is string && request.resource.data.verdict.size() <= 50 &&
+                       request.resource.data.category is string && request.resource.data.category.size() <= 50 &&
+                       request.resource.data.isCorrect is bool &&
+                       request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 50;
+      allow update, delete: if isAdmin();
+    }
+
+    // Overall App Reviews
+    match /app_reviews/{userId} {
+      allow read: if true;
+      allow create, update: if isOwner(userId) && isValidId(userId) &&
+                               request.resource.data.userId == request.auth.uid &&
+                               request.resource.data.stars is number &&
+                               request.resource.data.stars >= 1 && request.resource.data.stars <= 5 &&
+                               request.resource.data.userName is string && request.resource.data.userName.size() <= 100 &&
+                               (!('userPhoto' in request.resource.data) || (request.resource.data.userPhoto is string && request.resource.data.userPhoto.size() <= 500)) &&
+                               (!('review' in request.resource.data) || (request.resource.data.review is string && request.resource.data.review.size() <= 500)) &&
+                               request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 50;
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Known Scam Hashes Registry
+    match /scam_hashes/{hashId} {
+      allow read: if true;
+      allow create: if isValidId(hashId) &&
+                       request.resource.data.hash is string && request.resource.data.hash.size() == 64 &&
+                       request.resource.data.category is string && request.resource.data.category.size() <= 50 &&
+                       request.resource.data.title is string && request.resource.data.title.size() <= 150 &&
+                       request.resource.data.reportCount is number &&
+                       request.resource.data.reportCount >= 1 &&
+                       request.resource.data.createdAt is string && request.resource.data.createdAt.size() <= 50;
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportCount', 'verified']) &&
+          request.resource.data.reportCount is number
+        )
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 200 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "displayName", "createdAt", "role"]
+    },
+    "CommunityPost": {
+      "title": "CommunityPost",
+      "description": "Scam experience shared by users",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 5, "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 50 },
+        "story": { "type": "string", "minLength": 20, "maxLength": 2000 },
+        "avoidedOrLost": { "type": "string", "maxLength": 300 },
+        "isAnonymous": { "type": "boolean" },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorPhoto": { "type": "string", "maxLength": 500 },
+        "ratingCount": { "type": "number" },
+        "ratingSum": { "type": "number" },
+        "commentCount": { "type": "number" },
+        "reportCount": { "type": "number" },
+        "isHidden": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "story", "authorId", "createdAt"]
+    },
+    "CommunityRating": {
+      "title": "CommunityRating",
+      "description": "User star rating for a community story",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "rating": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "rating", "updatedAt"]
+    },
+    "CommunityComment": {
+      "title": "CommunityComment",
+      "description": "Comment on a community story",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "maxLength": 128 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorPhoto": { "type": "string", "maxLength": 500 },
+        "comment": { "type": "string", "minLength": 2, "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorId", "authorName", "comment", "createdAt"]
+    },
+    "FeedbackVerdict": {
+      "title": "FeedbackVerdict",
+      "description": "Anonymous result accuracy feedback",
+      "type": "object",
+      "properties": {
+        "verdict": { "type": "string", "maxLength": 30 },
+        "category": { "type": "string", "maxLength": 50 },
+        "isCorrect": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["verdict", "category", "isCorrect", "createdAt"]
+    },
+    "AppReview": {
+      "title": "AppReview",
+      "description": "Overall app review by a signed-in user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 100 },
+        "userPhoto": { "type": "string", "maxLength": 500 },
+        "stars": { "type": "number" },
+        "review": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "stars", "createdAt"]
+    },
+    "ScamHash": {
+      "title": "ScamHash",
+      "description": "Persisted known scam message SHA-256 hash",
+      "type": "object",
+      "properties": {
+        "hash": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "maxLength": 50 },
+        "title": { "type": "string", "maxLength": 150 },
+        "reportCount": { "type": "number" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hash", "category", "title", "reportCount", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "/community_posts/{postId}": {
+      "schema": { "$ref": "#/entities/CommunityPost" },
+      "description": "Community shared scam stories"
+    },
+    "/community_posts/{postId}/ratings/{userId}": {
+      "schema": { "$ref": "#/entities/CommunityRating" },
+      "description": "One rating per user per community story"
+    },
+    "/community_posts/{postId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/CommunityComment" },
+      "description": "Comments on community stories"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": { "$ref": "#/entities/FeedbackVerdict" },
+      "description": "Scan verdict accuracy feedback"
+    },
+    "/app_reviews/{userId}": {
+      "schema": { "$ref": "#/entities/AppReview" },
+      "description": "App ratings and reviews"
+    },
+    "/scam_hashes/{hashId}": {
+      "schema": { "$ref": "#/entities/ScamHash" },
+      "description": "Known viral scam SHA-256 hash database"
+    }
+  }
+}
